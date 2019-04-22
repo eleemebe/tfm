@@ -1,0 +1,7 @@
+data: banknote.csv
+column_1: numerical
+column_2: numerical
+column_3: numerical
+column_4: numerical
+column_5: target
+format: comma

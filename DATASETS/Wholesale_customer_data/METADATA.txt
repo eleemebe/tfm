@@ -1,0 +1,10 @@
+data: wholesale-customers-data.csv
+column_1: target
+column_2: categorical
+column_3: numerical
+column_4: numerical
+column_5: numerical
+column_6: numerical
+column_7: numerical
+column_8: numerical
+format: comma

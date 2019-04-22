@@ -1,0 +1,10 @@
+data: acute.csv
+column_1: numerical
+column_2: categorical
+column_3: categorical
+column_4: categorical
+column_5: categorical
+column_6: categorical
+column_7: categorical
+column_8: target
+format: tab

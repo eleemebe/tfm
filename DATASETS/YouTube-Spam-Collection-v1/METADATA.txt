@@ -1,0 +1,7 @@
+data: data.csv
+column_1: categorical
+column_2: categorical
+column_3: categorical
+column_4: categorical
+column_5: target
+format: comma

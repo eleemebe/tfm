@@ -1,0 +1,5 @@
+data: comedy_comparison.csv
+column_1: categorical
+column_2: categorical
+column_3: target
+format: comma

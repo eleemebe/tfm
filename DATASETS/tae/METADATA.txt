@@ -1,0 +1,8 @@
+data: tae.data.txt
+column_1: target
+column_2: categorical
+column_3: categorical
+column_4: categorical
+column_5: numerical
+column_6: categorical
+format: comma

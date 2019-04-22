@@ -1,0 +1,12 @@
+data: tic-tac-toe.data.txt
+column_1: categorical
+column_2: categorical
+column_3: categorical
+column_4: categorical
+column_5: categorical
+column_6: categorical
+column_7: categorical
+column_8: categorical
+column_9: categorical
+column_10: target
+format: comma
