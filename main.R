@@ -118,30 +118,6 @@ extract_train_test_datasets <- function(df) {
   return(list(train_data, test_data))
 }
 
-dataset_index <- 1
-
-input_file_df <- locate_input_files()
-metadata_df <- parse_metadata(input_file_df[dataset_index,2])
-loaded_data <- load_data(metadata_df, input_file_df[dataset_index,3])
-loaded_external_label_data <- NULL
-if(input_file_df[dataset_index,4] != ""){
-  loaded_external_label_data <- load_data(metadata_df, input_file_df[dataset_index,4])
-}
-converted_df <- convert_data(metadata_df, loaded_data, loaded_external_label_data)
-train_test <- extract_train_test_datasets(converted_df)
-train_data <- train_test[1][[1]]
-test_data <- train_test[2][[1]]
-target_index <- match('target', colnames(train_data))
-formula <- as.formula(paste(colnames(train_data)[target_index], ' ~ .' ))
-
-
-
-
-model <- "mxnet" #"glmboost",
-fitControl <- trainControl(method = "cv", number = 2, allowParallel = T, classProbs = TRUE)
-
-
-#fit <- train(formula, data=train_data, method = "rf", tuneGrid = tgrid, trControl = fitControl, ntree=10, metric="Kappa", allowParallel=F)
 model_properties <- data.frame(matrix(ncol=2, nrow = 0))
 colnames(model_properties) <- c('model','tgrid')
 
@@ -172,11 +148,48 @@ model_properties[nrow(model_properties)+1, ] <- list(model = "nb", tgrid = list(
 tgrid_knn  <- expand.grid(k = 1:20) 
 model_properties[nrow(model_properties)+1, ] <- list(model = "knn", tgrid = list(tgrid_knn))
 
+models <- list('rf', 'svmLinear', 'svmPoly', 'glm', 'rpart', 'xgbLinear', 'ada', 'nb', 'knn')
+
+
+input_file_df <- locate_input_files()
+
+for (dataset_index in 1:dim(input_file_df)[1]){
+  dataset_id <- input_file_df[dataset_index,1]
+  print(dataset_id)
+  metadata_path <- input_file_df[dataset_index,2]
+  data_path <- input_file_df[dataset_index,3]
+  external_label_data_path <- input_file_df[dataset_index,4]
+  metadata_df <- parse_metadata(metadata_path)
+  loaded_data <- load_data(metadata_df, data_path)
+  loaded_external_label_data <- NULL
+  if(input_file_df[dataset_index,4] != ""){
+    loaded_external_label_data <- load_data(metadata_df, external_label_data_path)
+  }
+  converted_df <- convert_data(metadata_df, loaded_data, loaded_external_label_data)
+  train_test <- extract_train_test_datasets(converted_df)
+  train_data <- train_test[1][[1]]
+  test_data <- train_test[2][[1]]
+  target_index <- match('target', colnames(train_data))
+  formula <- as.formula(paste(colnames(train_data)[target_index], ' ~ .' ))
+  
+  for(model in models){
+    fitControl <- trainControl(method = "cv", number = 2, allowParallel = T, classProbs = TRUE)
+    tgrid = model_properties[which(model_properties$model==model), 'tgrid'][[1]]
+    fit <- train(formula, data=train_data, method = model, trControl = fitControl, tuneGrid = tgrid)
+    predictions <- predict.train(fit, newdata=test_data, type = "prob") #type="prob" para la ROC
+    output_filename <- write.csv(predictions, file=paste0("../output/",dataset_id,"_",model ,".csv"))
+  }
+}
+
+#fit <- train(formula, data=train_data, method = "rf", tuneGrid = tgrid, trControl = fitControl, ntree=10, metric="Kappa", allowParallel=F)
+
+
 tgrid_mxnet  <- expand.grid(layer1=c(64, 128, 256),  layer2=c(16, 32, 64), layer3=c(2,4,8,16),learning.rate=c(10^-5, 5*10^-5, 10^-4, 10^-3,10^-2, 1, 10),momentum=0.9, dropout=c(0, 0.1, 0.2, 0.3, 0.4, 0.5), activation='relu') 
 model_properties[nrow(model_properties)+1, ] <- list(model = "mxnet", tgrid = list(tgrid_mxnet))
 library(mxnet)
 
 # How to install mxnet
+# its necessary a version r higher than 3.4.+
 # > cran <- getOption('repos')
 # > cran['dmlc'] <- 'https://s3-us-west-2.amazonaws.com/apache-mxnet/R/CRAN/'
 # > options(repos = cran)
@@ -185,14 +198,10 @@ library(mxnet)
 
 
 
-mxnet -> layer1 =(64, 128, 256), layer2=(16, 32, 64), layer3=(2,4,8,16), learning.rate=(10^-5 a 10 exponencialmente), momentum=(0.9), dropout=(0 a 0,5), activation=('relu')
 
 
 
-tgrid = model_properties[which(model_properties$model==model), 'tgrid'][[1]]
-fit <- train(formula, data=train_data, method = model, trControl = fitControl, tuneGrid = tgrid)
-predictions <- predict.train(fit, newdata=test_data, type = "prob") #type="prob" para la ROC
-output_filename <- write.csv(predictions, file=paste0("../output/",input_file_df[dataset_index,1],"_",model ,".csv"))
+
 
 
 
@@ -293,3 +302,34 @@ mxnet -> layer1 =(64, 128, 256), layer2=(16, 32, 64), layer3=(2,4,8,16), learnin
 
 6. Escribir memo
 "
+
+install.packages("drat", repos="https://cran.rstudio.com")
+drat:::addRepo("dmlc")
+install.packages("mxnet")
+
+
+install.packages('devtools') #assuming it is not already installed
+
+library(devtools)
+
+install_github('andreacirilloac/updateR')
+
+library(updateR)
+
+updateR(admin_password = 'Admin user password')
+
+
+cran <- getOption("repos")
+cran["dmlc"] <- "https://s3-us-west-2.amazonaws.com/apache-mxnet/R/CRAN/"
+options(repos = cran)
+install.packages("mxnet",dependencies = T)
+library(mxnet)
+cran <- getOption("repos")
+cran["dmlc"] <- "https://s3.amazonaws.com/mxnet-r/"
+options(repos = cran)
+install.packages("mxnet")
+
+cran <- getOption("repos")
+cran["dmlc"] <- "https://apache-mxnet.s3-accelerate.dualstack.amazonaws.com/R/CRAN/"
+options(repos = cran)
+install.packages("mxnet")
