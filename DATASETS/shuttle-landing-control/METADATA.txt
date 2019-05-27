@@ -1,0 +1,9 @@
+data: shuttle-landing-control.csv
+column_1: target
+column_2: categorical
+column_3: categorical
+column_4: categorical
+column_5: categorical
+column_6: categorical
+column_7: categorical
+format: comma

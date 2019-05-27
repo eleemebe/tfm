@@ -1,0 +1,9 @@
+data: cryotherapy.csv
+column_1: categorical
+column_2: numerical
+column_3: numerical
+column_4: numerical
+column_5: categorical
+column_6: categorical
+column_7: target
+format: comma

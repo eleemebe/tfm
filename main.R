@@ -1,5 +1,7 @@
 library(readxl)
 library(caret)
+library(PRROC)
+library(stringr)
 
 base_directory <- "~/Documents/TFM"
 datasets_dir <- "DATASETS"
@@ -105,7 +107,39 @@ convert_data <- function(metadata_df, loaded_data, loaded_external_label_data = 
       }
     }
   }
+  
+  for (column in names(preprocessed_df)){
+    if(is.factor(preprocessed_df[[column]])){
+      if(length(levels(preprocessed_df[[column]]))==1){
+        preprocessed_df <- preprocessed_df[,!(names(preprocessed_df) %in% column)]
+      }else {
+        # Para hacer que los nombres del target coincidan con los ya entrenados
+        if(all(make.names(levels(preprocessed_df[[column]])) == levels(preprocessed_df[[column]]))){
+          levels <- levels(preprocessed_df[[column]])
+        }else{
+          levels <- unique(c(preprocessed_df[[column]]))
+        }
+        preprocessed_df[[column]] <- factor(preprocessed_df[[column]], labels=make.names(levels))
+      }
+    }
+  }
+  
   return(preprocessed_df)
+}
+
+
+for (column in names(train_data)){
+  if(is.factor(train_data[[column]])){
+    if(length(levels(train_data[[column]]))==1){
+      train_data <- train_data[,!(names(train_data) %in% column)]
+    }
+  }
+}
+
+
+remove_NAs <- function(df){
+  df <- df[complete.cases(df), ]
+  return(df)
 }
 
 extract_train_test_datasets <- function(df) {
@@ -118,38 +152,44 @@ extract_train_test_datasets <- function(df) {
   return(list(train_data, test_data))
 }
 
-model_properties <- data.frame(matrix(ncol=2, nrow = 0))
-colnames(model_properties) <- c('model','tgrid')
+load_model_properties <- function(train_data){
+  model_properties <- data.frame(matrix(ncol=2, nrow = 0))
+  colnames(model_properties) <- c('model','tgrid')
+  
+  tgrid_rf <- expand.grid(mtry = 2:(ncol(train_data)-1)) 
+  model_properties[nrow(model_properties)+1, ] <- list(model = "rf", tgrid = list(tgrid_rf))
+  
+  tgrid_svmLinear <- expand.grid(C = c(10^-5, 10^-3, 10^-1, 10^1, 10^3, 10^5)) 
+  model_properties[nrow(model_properties)+1, ] <- list(model = "svmLinear", tgrid = list(tgrid_svmLinear))
+  
+  tgrid_svmPoly <- expand.grid(degree = 0:6, scale = c(10^-15, 10^-13, 10^-11, 10^-9,10^-7,10^-5,10^-3,10^-1,10, 10^3), C = c(10^-5, 10^-3, 10^-1, 10^1, 10^3, 10^5)) 
+  model_properties[nrow(model_properties)+1, ] <- list(model = "svmPoly", tgrid = list(tgrid_svmPoly))
+  
+  tgrid_glm <- NULL
+  model_properties[nrow(model_properties)+1, ] <- list(model = "glm", tgrid = list(tgrid_glm))
+  
+  tgrid_rpart <- expand.grid(cp = c(0,0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1)) 
+  model_properties[nrow(model_properties)+1, ] <- list(model = "rpart", tgrid = list(tgrid_rpart))
+  
+  tgrid_xgbLinear  <- expand.grid(nrounds=2, lambda= c(0, 0.25, 0.5, 0.75, 1), alpha=c(0, 0.25, 0.5, 0.75, 1), eta = c(0.01, 0.001, 0.0001)) 
+  model_properties[nrow(model_properties)+1, ] <- list(model = "xgbLinear", tgrid = list(tgrid_xgbLinear))
+  
+  tgrid_ada  <- expand.grid(iter= c(20, 50, 100, 500), maxdepth=1:5, nu=c(0, 0.25, 0.5, 0.75, 1)) 
+  model_properties[nrow(model_properties)+1, ] <- list(model = "ada", tgrid = list(tgrid_ada))
+  
+  tgrid_nb  <- expand.grid(fL = 0:5, usekernel = c(TRUE, FALSE), adjust = 0:5) 
+  model_properties[nrow(model_properties)+1, ] <- list(model = "nb", tgrid = list(tgrid_nb))
+  
+  tgrid_knn  <- expand.grid(k = 1:20) 
+  model_properties[nrow(model_properties)+1, ] <- list(model = "knn", tgrid = list(tgrid_knn))
+  
+  return(model_properties)
+}
 
-tgrid_rf <- expand.grid(mtry = 2:(ncol(train_data)-1)) 
-model_properties[nrow(model_properties)+1, ] <- list(model = "rf", tgrid = list(tgrid_rf))
 
-tgrid_svmLinear <- expand.grid(C = c(10^-5, 10^-3, 10^-1, 10^1, 10^3, 10^5)) 
-model_properties[nrow(model_properties)+1, ] <- list(model = "svmLinear", tgrid = list(tgrid_svmLinear))
 
-tgrid_svmPoly <- expand.grid(degree = 0:6, scale = c(10^-15, 10^-13, 10^-11, 10^-9,10^-7,10^-5,10^-3,10^-1,10, 10^3), C = c(10^-5, 10^-3, 10^-1, 10^1, 10^3, 10^5)) 
-model_properties[nrow(model_properties)+1, ] <- list(model = "svmPoly", tgrid = list(tgrid_svmPoly))
-
-tgrid_glm <- NULL
-model_properties[nrow(model_properties)+1, ] <- list(model = "glm", tgrid = list(tgrid_glm))
-
-tgrid_rpart <- expand.grid(cp = c(0,0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1)) 
-model_properties[nrow(model_properties)+1, ] <- list(model = "rpart", tgrid = list(tgrid_rpart))
-
-tgrid_xgbLinear  <- expand.grid(nrounds=2, lambda= c(0, 0.25, 0.5, 0.75, 1), alpha=c(0, 0.25, 0.5, 0.75, 1), eta = c(0.01, 0.001, 0.0001)) 
-model_properties[nrow(model_properties)+1, ] <- list(model = "xgbLinear", tgrid = list(tgrid_xgbLinear))
-
-tgrid_ada  <- expand.grid(iter= c(20, 50, 100, 500), maxdepth=1:5, nu=c(0, 0.25, 0.5, 0.75, 1)) 
-model_properties[nrow(model_properties)+1, ] <- list(model = "ada", tgrid = list(tgrid_ada))
-
-tgrid_nb  <- expand.grid(fL = 0:5, usekernel = c(TRUE, FALSE), adjust = 0:5) 
-model_properties[nrow(model_properties)+1, ] <- list(model = "nb", tgrid = list(tgrid_nb))
-
-tgrid_knn  <- expand.grid(k = 1:20) 
-model_properties[nrow(model_properties)+1, ] <- list(model = "knn", tgrid = list(tgrid_knn))
-
-models <- list('rf', 'svmLinear', 'svmPoly', 'glm', 'rpart', 'xgbLinear', 'ada', 'nb', 'knn')
-
+#models <- list('rf', 'svmLinear', 'svmPoly', 'glm', 'rpart', 'ada','xgbLinear',  'nb', 'knn') #glm, rpart  
+models <- list()
 
 input_file_df <- locate_input_files()
 
@@ -161,32 +201,80 @@ for (dataset_index in 1:dim(input_file_df)[1]){
   external_label_data_path <- input_file_df[dataset_index,4]
   metadata_df <- parse_metadata(metadata_path)
   loaded_data <- load_data(metadata_df, data_path)
-  loaded_external_label_data <- NULL
+  loaded_data_without_NAs <- remove_NAs(loaded_data)
+  loaded_external_label_data_without_NAs <- NULL
   if(input_file_df[dataset_index,4] != ""){
     loaded_external_label_data <- load_data(metadata_df, external_label_data_path)
+    loaded_external_label_data_without_NAs <- remove_NAs(loaded_external_label_data)
   }
-  converted_df <- convert_data(metadata_df, loaded_data, loaded_external_label_data)
+  converted_df <- convert_data(metadata_df, loaded_data_without_NAs, loaded_external_label_data_without_NAs)
   train_test <- extract_train_test_datasets(converted_df)
   train_data <- train_test[1][[1]]
   test_data <- train_test[2][[1]]
+  actuals_filename <- write.csv(test_data$target, file=paste0("../actuals/",dataset_id,"_actuals.csv"))
   target_index <- match('target', colnames(train_data))
   formula <- as.formula(paste(colnames(train_data)[target_index], ' ~ .' ))
+  model_properties <- load_model_properties(train_data)
   
   for(model in models){
-    fitControl <- trainControl(method = "cv", number = 2, allowParallel = T, classProbs = TRUE)
-    tgrid = model_properties[which(model_properties$model==model), 'tgrid'][[1]]
-    fit <- train(formula, data=train_data, method = model, trControl = fitControl, tuneGrid = tgrid)
-    predictions <- predict.train(fit, newdata=test_data, type = "prob") #type="prob" para la ROC
-    output_filename <- write.csv(predictions, file=paste0("../output/",dataset_id,"_",model ,".csv"))
+     try({
+        print(model)
+        fitControl <- trainControl(method = "cv", number = 2, allowParallel = T, classProbs = TRUE)
+        tgrid = model_properties[which(model_properties$model==model), 'tgrid'][[1]]
+        fit <- train(formula, data=train_data, method = model, trControl = fitControl, tuneGrid = tgrid)
+        predictions <- predict.train(fit, newdata=test_data, type = "prob") #type="prob" para la ROC
+        output_filename <- write.csv(predictions, file=paste0("../output/",dataset_id,"_",model ,".csv"))
+       })
   }
 }
+
+
+actuals_dir <- "actuals"
+output_dir <- "output"
+
+setwd(paste0(base_directory, "/", output_dir))
+
+df_results <- data.frame(matrix(ncol=2, nrow = 0))
+colnames(df_results) <- c("dataset_model", "prroc")
+files <- list.files(path = ".", recursive = TRUE)
+
+for(file in files){
+  print(file)
+  dataset_id <- substr(file,1,str_locate(file, "[^_]+$")[1]-2)
+  dataset_model <- sub(".csv","",file)
+  
+  setwd(paste0(base_directory, "/", actuals_dir))
+  actuals <- read.csv2(paste0(dataset_id,"_actuals.csv"), header = T, sep = ",")
+  
+  setwd(paste0(base_directory, "/", output_dir))
+  
+  probs <- read.csv2(file, header = T, sep = ",")
+  results <- cbind(actuals,probs)
+  first_level = levels(actuals$x)[1]
+  second_level = levels(actuals$x)[2]
+  fg <- probs[actuals$x == first_level,1]
+  bg <- probs[actuals$x == second_level,1]
+  pr_1 <- pr.curve(scores.class0 = fg, scores.class1 = bg, curve = T)
+  pr_2 <- pr.curve(scores.class0 = bg, scores.class1 = fg, curve = T)
+  if(pr_1$auc.integral > pr_2$auc.integral){
+    prroc <- pr_1
+  }else{
+    prroc <- pr_2
+  }
+  df_results[nrow(df_results)+1, ] <- list(dataset_model = dataset_model, prroc = list(prroc))
+}
+
+
+# NEXT STEPS: AGRUPAR DATASETS POR TIPOS PARA AVERIGURAR QUE MODELO FUNCIONA MEJOR CON QUE TIPO DD DATASETS. 
+
+
 
 #fit <- train(formula, data=train_data, method = "rf", tuneGrid = tgrid, trControl = fitControl, ntree=10, metric="Kappa", allowParallel=F)
 
 
-tgrid_mxnet  <- expand.grid(layer1=c(64, 128, 256),  layer2=c(16, 32, 64), layer3=c(2,4,8,16),learning.rate=c(10^-5, 5*10^-5, 10^-4, 10^-3,10^-2, 1, 10),momentum=0.9, dropout=c(0, 0.1, 0.2, 0.3, 0.4, 0.5), activation='relu') 
-model_properties[nrow(model_properties)+1, ] <- list(model = "mxnet", tgrid = list(tgrid_mxnet))
-library(mxnet)
+# tgrid_mxnet  <- expand.grid(layer1=c(64, 128, 256),  layer2=c(16, 32, 64), layer3=c(2,4,8,16),learning.rate=c(10^-5, 5*10^-5, 10^-4, 10^-3,10^-2, 1, 10),momentum=0.9, dropout=c(0, 0.1, 0.2, 0.3, 0.4, 0.5), activation='relu') 
+# model_properties[nrow(model_properties)+1, ] <- list(model = "mxnet", tgrid = list(tgrid_mxnet))
+# library(mxnet)
 
 # How to install mxnet
 # its necessary a version r higher than 3.4.+
@@ -194,56 +282,6 @@ library(mxnet)
 # > cran['dmlc'] <- 'https://s3-us-west-2.amazonaws.com/apache-mxnet/R/CRAN/'
 # > options(repos = cran)
 # > install.packages('mxnet', dependencies = T)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-for (i in 1:length(df_files[,'dataset_data'])) {
-#for (i in 1:1) {
-  print(paste0("Reading file: ", files[i]))
-  dataset_name <- strsplit(files[i], ".csv")
-  
-  data <- read.csv2(paste0("datasets/",files[i]), header = F, sep = ",")
-  target_index <- dim(data)[2]
-  
-  # Convert target to factor
-  data[,target_index] <- factor(data[,target_index])
-  
-  # Divide data in train and test sets
-  train_percentage <- 0.75
-  train_size <- floor(train_percentage*nrow(data))
-  set.seed(111)
-  sample <- sample.int(n=nrow(data), size= train_size, replace = F)
-  train_data <- data[sample,]
-  test_data <- data[-sample,]
-  target_index <- match('target', colnames(train_data))
-  models <- list("adaboost")#"glmboost",
-  formula <- as.formula(paste(colnames(train_data)[target_index], ' ~ .' ))
-  for(model in models){
-    print(paste0("   Training model: ", model))
-    #fit <- train(formula, data=train_data, method = model)
-    fitControl <- trainControl(method = "cv", number = 2, allowParallel = T)
-    fit <- train(formula, data=train_data, method = model, trControl = fitControl)
-    
-    predictions <- predict.train(fit, newdata=test_data, type = "prob") #type="prob" para la ROC
-    output_filename <- write.csv2(predictions, file=paste0("../output/",dataset_name,"_",model ,".csv"))
-    
-    #conf <- confusionMatrix(data=predictions, reference = test_target)
-    #print(paste0("      F1 score: ", conf$byClass[7]))
-  }
-  
-}
 
 
 
@@ -303,33 +341,33 @@ mxnet -> layer1 =(64, 128, 256), layer2=(16, 32, 64), layer3=(2,4,8,16), learnin
 6. Escribir memo
 "
 
-install.packages("drat", repos="https://cran.rstudio.com")
-drat:::addRepo("dmlc")
-install.packages("mxnet")
-
-
-install.packages('devtools') #assuming it is not already installed
-
-library(devtools)
-
-install_github('andreacirilloac/updateR')
-
-library(updateR)
-
-updateR(admin_password = 'Admin user password')
-
-
-cran <- getOption("repos")
-cran["dmlc"] <- "https://s3-us-west-2.amazonaws.com/apache-mxnet/R/CRAN/"
-options(repos = cran)
-install.packages("mxnet",dependencies = T)
-library(mxnet)
-cran <- getOption("repos")
-cran["dmlc"] <- "https://s3.amazonaws.com/mxnet-r/"
-options(repos = cran)
-install.packages("mxnet")
-
-cran <- getOption("repos")
-cran["dmlc"] <- "https://apache-mxnet.s3-accelerate.dualstack.amazonaws.com/R/CRAN/"
-options(repos = cran)
-install.packages("mxnet")
+# install.packages("drat", repos="https://cran.rstudio.com")
+# drat:::addRepo("dmlc")
+# install.packages("mxnet")
+# 
+# 
+# install.packages('devtools') #assuming it is not already installed
+# 
+# library(devtools)
+# 
+# install_github('andreacirilloac/updateR')
+# 
+# library(updateR)
+# 
+# updateR(admin_password = 'Admin user password')
+# 
+# 
+# cran <- getOption("repos")
+# cran["dmlc"] <- "https://s3-us-west-2.amazonaws.com/apache-mxnet/R/CRAN/"
+# options(repos = cran)
+# install.packages("mxnet",dependencies = T)
+# library(mxnet)
+# cran <- getOption("repos")
+# cran["dmlc"] <- "https://s3.amazonaws.com/mxnet-r/"
+# options(repos = cran)
+# install.packages("mxnet")
+# 
+# cran <- getOption("repos")
+# cran["dmlc"] <- "https://apache-mxnet.s3-accelerate.dualstack.amazonaws.com/R/CRAN/"
+# options(repos = cran)
+# install.packages("mxnet")

@@ -1,4 +1,0 @@
-data: arcene_data.csv
-column_all: numerical
-labels: arcene_labels.csv
-format: space
