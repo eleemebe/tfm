@@ -1,0 +1,8 @@
+data: training.csv
+column_1: target
+column_2: numerical
+column_3: numerical
+column_4: numerical
+column_5: numerical
+column_6: numerical
+format: comma

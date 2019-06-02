@@ -1,0 +1,12 @@
+data: dataR2.csv
+column_1: numerical
+column_2: numerical
+column_3: numerical
+column_4: numerical
+column_5: numerical
+column_6: numerical
+column_7: numerical
+column_8: numerical
+column_9: numerical
+column_10: target
+format: comma

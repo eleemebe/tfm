@@ -1,0 +1,6 @@
+data: Skin_NonSkin.txt
+column_1: target
+column_2: numerical
+column_3: numerical
+column_4: numerical
+format: tab

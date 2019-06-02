@@ -1,0 +1,17 @@
+data: australian.csv
+column_1: categorical
+column_2: numerical
+column_3: numerical
+column_4: categorical
+column_5: categorical
+column_6: categorical
+column_7: numerical
+column_8: categorical
+column_9: categorical
+column_10: numerical
+column_11: categorical
+column_12: categorical
+column_13: numerical
+column_14: numerical
+column_15: target
+format: space

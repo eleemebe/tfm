@@ -1,6 +1,7 @@
 library(readxl)
 library(caret)
 library(PRROC)
+library(ROCR)
 library(stringr)
 
 base_directory <- "~/Documents/TFM"
@@ -234,35 +235,152 @@ output_dir <- "output"
 
 setwd(paste0(base_directory, "/", output_dir))
 
-df_results <- data.frame(matrix(ncol=2, nrow = 0))
-colnames(df_results) <- c("dataset_model", "prroc")
+df_results <- data.frame(matrix(ncol=3, nrow = 0))
+colnames(df_results) <- c("dataset_model", "model", "f1")
 files <- list.files(path = ".", recursive = TRUE)
 
 for(file in files){
   print(file)
   dataset_id <- substr(file,1,str_locate(file, "[^_]+$")[1]-2)
   dataset_model <- sub(".csv","",file)
+  model <- substr(dataset_model, str_locate(dataset_model, "[^_]+$")[1],nchar(dataset_model))
   
   setwd(paste0(base_directory, "/", actuals_dir))
-  actuals <- read.csv2(paste0(dataset_id,"_actuals.csv"), header = T, sep = ",")
+  actuals <- read.csv2(paste0(dataset_id,"_actuals.csv"), header = T, sep = ",")$x
   
   setwd(paste0(base_directory, "/", output_dir))
   
-  probs <- read.csv2(file, header = T, sep = ",")
-  results <- cbind(actuals,probs)
-  first_level = levels(actuals$x)[1]
-  second_level = levels(actuals$x)[2]
-  fg <- probs[actuals$x == first_level,1]
-  bg <- probs[actuals$x == second_level,1]
-  pr_1 <- pr.curve(scores.class0 = fg, scores.class1 = bg, curve = T)
-  pr_2 <- pr.curve(scores.class0 = bg, scores.class1 = fg, curve = T)
-  if(pr_1$auc.integral > pr_2$auc.integral){
-    prroc <- pr_1
-  }else{
-    prroc <- pr_2
-  }
-  df_results[nrow(df_results)+1, ] <- list(dataset_model = dataset_model, prroc = list(prroc))
+  # Choose less frequent class as prediction target (positive)
+  tt = table(actuals)
+  positive_class = names(tt[which.min(tt)])
+  negative_class = levels(actuals)[levels(actuals) != positive_class]
+  
+  
+  probs <- as.numeric(read.csv2(file, header = T, sep = ",", stringsAsFactors = F)[,positive_class])
+  
+  
+  #probs <- as.numeric(read.csv2(file, header = T, sep = ",", stringsAsFactors = F)[,2])
+  #probs_2 <- as.numeric(read.csv2(file, header = T, sep = ",", stringsAsFactors = F)[,3])
+  ##results <- cbind(actuals,probs)
+  #first_level = levels(actuals$x)[1]
+  #second_level = levels(actuals$x)[2]
+  #fg <- probs[actuals$x == first_level]
+  #bg <- probs[actuals$x == second_level]
+  #pr_1 <- pr.curve(scores.class0 = fg, scores.class1 = bg, curve = T)
+  #print(pr_1$auc.integral)
+  #pr_2 <- pr.curve(scores.class0 = bg, scores.class1 = fg, curve = T)
+  #print(pr_2$auc.integral)
+  #pr_1 <- pr.curve(probs,probs_2)
+  #print(pr_1$auc.integral)
+  #pr_2 <- pr.curve(probs_2,probs)
+  #print(pr_2$auc.integral)
+  #if(pr_1$auc.integral > pr_2$auc.integral){
+  #  prroc <- pr_1
+  #}else{
+  #  prroc <- pr_2
+  #}
+  
+  pred <- prediction(probs,actuals, label.ordering = c(negative_class,positive_class))
+  perf <- performance(pred,"f")
+  bestF1ScoreIndex <- which.max(perf@"y.values"[[1]])
+  f1 <- perf@"y.values"[[1]][bestF1ScoreIndex]
+  # f1_1 <- perf@"y.values"[[1]][bestF1ScoreIndex]
+  # 
+  # pred_2 <- prediction(probs,actuals, label.ordering = c(levels(actuals[1])[2],levels(actuals[1])[1]))
+  # perf_2 <- performance(pred_2,"f")
+  # bestF1ScoreIndex_2 <- which.max(perf_2@"y.values"[[1]])
+  # f1_2 <- perf_2@"y.values"[[1]][bestF1ScoreIndex_2]
+  # 
+  # if(f1_1 > f1_2){
+  #   f1 <- f1_1
+  # }else{
+  #   f1 <- f1_2
+  # }
+  # 
+  #prec = performance(pred,"prec")@"y.values"[[1]]
+  #rec = performance(pred,"rec")@"y.values"[[1]]
+  #prauc <- integrate(approxfun(data.frame(rec,prec)),0,1)$value
+  
+  
+  #df_results[nrow(df_results)+1, ] <- list(dataset_model = dataset_model, prroc = list(prroc))
+  #df_results[nrow(df_results)+1, ] <- list(dataset_model = dataset_model, prroc = prroc$auc.integral, f1 = f1)
+  df_results[nrow(df_results)+1, ] <- list(dataset_model = dataset_model, model = model, f1 = f1)
 }
+
+
+
+
+# Agrupamos datasets
+base_directory <- "~/Documents/TFM"
+datasets_dir <- "DATASETS"
+setwd(paste0(base_directory, "/", datasets_dir))
+df_summary <- data.frame(matrix(ncol=5, nrow = 0))
+colnames(df_summary) <- c("dataset_id", "num_examples", "num_variables", "perc_categorical_variables", "perc_numerical_variables")
+for (dataset_index in 1:dim(input_file_df)[1]){
+  dataset_id <- input_file_df[dataset_index,1]
+  print(dataset_id)
+  metadata_path <- input_file_df[dataset_index,2]
+  data_path <- input_file_df[dataset_index,3]
+  external_label_data_path <- input_file_df[dataset_index,4]
+  metadata_df <- parse_metadata(metadata_path)
+  loaded_data <- load_data(metadata_df, data_path)
+  loaded_data_without_NAs <- remove_NAs(loaded_data)
+  loaded_external_label_data_without_NAs <- NULL
+  if(input_file_df[dataset_index,4] != ""){
+    loaded_external_label_data <- load_data(metadata_df, external_label_data_path)
+    loaded_external_label_data_without_NAs <- remove_NAs(loaded_external_label_data)
+  }
+  converted_df <- convert_data(metadata_df, loaded_data_without_NAs, loaded_external_label_data_without_NAs)
+  examples_df = subset(converted_df,select=-c(target))
+  num_examples = nrow(examples_df)
+  num_variables = ncol(examples_df)
+  perc_numerical_variables = sum(unlist(lapply(examples_df, is.numeric)))/num_variables
+  perc_categorical_variables = sum(unlist(lapply(examples_df, is.factor)))/num_variables
+  df_summary[nrow(df_summary)+1, ] <- list(dataset_id = dataset_id, num_examples = num_examples, num_variables = num_variables, perc_numerical_variables = perc_numerical_variables, perc_categorical_variables = perc_categorical_variables)
+}
+
+## Todo variables categoricas
+has_all_categorical_variables = df_summary[df_summary[,"perc_categorical_variables"]==1,1]
+pattern = paste(has_all_categorical_variables, collapse="|")
+plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
+boxplot(f1~model, data=plot_data)
+
+## Todo variables numericas
+has_all_numerical_variables = df_summary[df_summary[,"perc_numerical_variables"]==1,1]
+pattern = paste(has_all_numerical_variables, collapse="|")
+plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
+boxplot(f1~model, data=plot_data)
+
+## Mix de variables categoricas y numericas
+has_some_numerical_variables = df_summary[df_summary[,"perc_numerical_variables"]>0 && df_summary["perc_numerical_variables"]<1,1]
+pattern = paste(has_some_numerical_variables, collapse="|")
+plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
+boxplot(f1~model, data=plot_data)
+
+## Por numero variables: menos de 10 columnas
+has_less_than_ten_variables = df_summary[df_summary[,"num_variables"]<10,1]
+pattern = paste(has_less_than_ten_variables, collapse="|")
+plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
+boxplot(f1~model, data=plot_data)
+
+## Por numero variables: igual o mas de 10 columnas
+has_more_than_ten_variables = df_summary[df_summary[,"num_variables"]>=10,1]
+pattern = paste(has_more_than_ten_variables, collapse="|")
+plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
+boxplot(f1~model, data=plot_data)
+
+## Por numero de ejemplos: menos de 500
+has_less_than_500_examples = df_summary[df_summary[,"num_examples"]<500,1]
+pattern = paste(has_less_than_500_examples, collapse="|")
+plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
+boxplot(f1~model, data=plot_data)
+
+## Por numero de ejemplos: mas de 500
+has_more_than_500_examples = df_summary[df_summary[,"num_examples"]>=500,1]
+pattern = paste(has_more_than_500_examples, collapse="|")
+plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
+boxplot(f1~model, data=plot_data)
+
 
 
 # NEXT STEPS: AGRUPAR DATASETS POR TIPOS PARA AVERIGURAR QUE MODELO FUNCIONA MEJOR CON QUE TIPO DD DATASETS. 
@@ -333,8 +451,8 @@ mxnet -> layer1 =(64, 128, 256), layer2=(16, 32, 64), layer3=(2,4,8,16), learnin
 
 5. Presentar resultados en funcion de: 
 5.1 Paralelizable o no
-5.2 Datasets con mayoria de varialbes categoricas
-5.3 Datasets con mayoria de varialbes numericas
+5.2 Datasets con mayoria de variables categoricas
+5.3 Datasets con mayoria de variables numericas
 5.4 por tamaño de dataset
 5.5 Por numero de variables 
 

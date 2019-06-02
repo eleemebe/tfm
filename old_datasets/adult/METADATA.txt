@@ -1,0 +1,17 @@
+data: adult_unified.csv
+column_1: numerical
+column_2: categorical
+column_3: ignore
+column_4: categorical
+column_5: ignore
+column_6: categorical
+column_7: categorical
+column_8: categorical
+column_9: categorical
+column_10: categorical
+column_11: numerical
+column_12: numerical
+column_13: numerical
+column_14: categorical
+column_15: target
+format: comma 
