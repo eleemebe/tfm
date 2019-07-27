@@ -3,6 +3,8 @@ library(caret)
 library(PRROC)
 library(ROCR)
 library(stringr)
+library(ggplot2)
+library(gridExtra)
 
 base_directory <- "~/Documents/TFM"
 datasets_dir <- "DATASETS"
@@ -189,8 +191,8 @@ load_model_properties <- function(train_data){
 
 
 
-#models <- list('rf', 'svmLinear', 'svmPoly', 'glm', 'rpart', 'ada','xgbLinear',  'nb', 'knn') #glm, rpart  
-models <- list()
+models <- list('rf', 'svmLinear', 'svmPoly', 'glm', 'rpart', 'ada','xgbLinear',  'nb', 'knn') #glm, rpart  
+#models <- list()
 
 input_file_df <- locate_input_files()
 
@@ -339,51 +341,121 @@ for (dataset_index in 1:dim(input_file_df)[1]){
   df_summary[nrow(df_summary)+1, ] <- list(dataset_id = dataset_id, num_examples = num_examples, num_variables = num_variables, perc_numerical_variables = perc_numerical_variables, perc_categorical_variables = perc_categorical_variables)
 }
 
-## Todo variables categoricas
+theme <- theme_set(theme_minimal())
+
+plot_boxplot_by_model <- function(df, title){
+    boxplot <- ggplot(df, aes(x=reorder(model, -f1, median), y=f1)) + 
+    geom_boxplot(aes(fill=model)) +
+    theme(axis.text.x= element_text(angle = 90), legend.position = 'none') +
+    ggtitle(title)
+    return(boxplot)
+}
+
+plot_boxplot_by_data_group <- function(df){
+  boxplot <- ggplot(df, aes(x=reorder(data_group, -f1, median), y=f1)) + 
+    geom_boxplot(aes(fill=data_group)) +
+    theme(axis.text.x= element_text(angle = 90), legend.position = 'none') +
+    ggtitle(df$model[1])
+  return(boxplot)
+}
+group_results_by_model_and_dataset_group <- function(results_df, dataset_list, model, dataset_group_tag){
+  pattern = paste(dataset_list, collapse="|")
+  temp_df = results_df[grepl(pattern,results_df[,"dataset_model"]),]
+  output = temp_df[temp_df[,"model"]==model,]
+  output[,'data_group'] = dataset_group_tag
+  return(output)
+}
+
 has_all_categorical_variables = df_summary[df_summary[,"perc_categorical_variables"]==1,1]
+has_all_numerical_variables = df_summary[df_summary[,"perc_numerical_variables"]==1,1]
+has_some_numerical_variables = df_summary[df_summary[,"perc_numerical_variables"]>0 && df_summary["perc_numerical_variables"]<1,1]
+has_less_than_ten_variables = df_summary[df_summary[,"num_variables"]<10,1]
+has_more_than_ten_variables = df_summary[df_summary[,"num_variables"]>=10,1]
+has_less_than_500_examples = df_summary[df_summary[,"num_examples"]<500,1]
+has_more_than_500_examples = df_summary[df_summary[,"num_examples"]>=500,1]
+
+
+df_results_by_data_group = data.frame(matrix(ncol=4, nrow = 0))
+for(model in models){
+  all_categorical_results = group_results_by_model_and_dataset_group(df_results, has_all_categorical_variables, model, "All Categorical")
+  all_numerical_results = group_results_by_model_and_dataset_group(df_results, has_all_numerical_variables, model, "All Numerical")
+  some_numerical_results = group_results_by_model_and_dataset_group(df_results, has_some_numerical_variables, model, "Numerical & Categorical")
+  less_than_ten_variables_results = group_results_by_model_and_dataset_group(df_results, has_less_than_ten_variables, model, "<10 Features")
+  more_than_ten_variables_results = group_results_by_model_and_dataset_group(df_results, has_more_than_ten_variables, model, ">=10 Features")
+  less_than_500_examples_results = group_results_by_model_and_dataset_group(df_results, has_less_than_500_examples, model, "<500 Samples")
+  more_than_500_examples_results = group_results_by_model_and_dataset_group(df_results, has_more_than_500_examples, model, ">=500 Samples")
+  df_results_by_data_group = rbind(df_results_by_data_group,
+                                   all_categorical_results,
+                                   all_numerical_results,
+                                   some_numerical_results,
+                                   less_than_ten_variables_results,
+                                   more_than_ten_variables_results,
+                                   less_than_500_examples_results,
+                                   more_than_500_examples_results
+  )
+}
+
+## Representation of results by model
+
+# Plot conjunto
+ggplot(df_results_by_data_group, aes(x=reorder(data_group, -f1, median), y=f1)) + 
+  geom_boxplot(aes(fill=data_group)) +
+  theme(axis.text.x= element_text(angle = 90), legend.position = 'none') +
+  facet_wrap( ~ model) +
+  xlab("Dataset category group")
+
+# Plot individual
+plot_data <- df_results_by_data_group[df_results_by_data_group[,"model"]=="ada",]
+plot_boxplot_by_data_group(plot_data)
+
+
+## Representation of results by dataset group
+
+# Plot conjunto
+ggplot(df_results_by_data_group, aes(x=reorder(model, -f1, median), y=f1)) + 
+  geom_boxplot(aes(fill=model)) +
+  theme(axis.text.x= element_text(angle = 90), legend.position = 'none') +
+  facet_wrap( ~ data_group, scales = "free_x") +
+  xlab("Model")
+
+# Plots individuales
+## Todo variables categoricas
 pattern = paste(has_all_categorical_variables, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
-boxplot(f1~model, data=plot_data)
+plot_boxplot_by_model(plot_data, "All categorical")
 
 ## Todo variables numericas
-has_all_numerical_variables = df_summary[df_summary[,"perc_numerical_variables"]==1,1]
 pattern = paste(has_all_numerical_variables, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
-boxplot(f1~model, data=plot_data)
+plot_boxplot_by_model(plot_data, "All numerical")
 
 ## Mix de variables categoricas y numericas
-has_some_numerical_variables = df_summary[df_summary[,"perc_numerical_variables"]>0 && df_summary["perc_numerical_variables"]<1,1]
 pattern = paste(has_some_numerical_variables, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
-boxplot(f1~model, data=plot_data)
+plot_boxplot_by_model(plot_data, "Numerical & Categorical")
 
 ## Por numero variables: menos de 10 columnas
-has_less_than_ten_variables = df_summary[df_summary[,"num_variables"]<10,1]
 pattern = paste(has_less_than_ten_variables, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
-boxplot(f1~model, data=plot_data)
+plot_boxplot_by_model(plot_data, "<10 Features")
 
 ## Por numero variables: igual o mas de 10 columnas
-has_more_than_ten_variables = df_summary[df_summary[,"num_variables"]>=10,1]
 pattern = paste(has_more_than_ten_variables, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
-boxplot(f1~model, data=plot_data)
+plot_boxplot_by_model(plot_data, ">=10 Features")
 
 ## Por numero de ejemplos: menos de 500
-has_less_than_500_examples = df_summary[df_summary[,"num_examples"]<500,1]
 pattern = paste(has_less_than_500_examples, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
-boxplot(f1~model, data=plot_data)
+plot_boxplot_by_model(plot_data, "<500 Samples")
 
 ## Por numero de ejemplos: mas de 500
-has_more_than_500_examples = df_summary[df_summary[,"num_examples"]>=500,1]
 pattern = paste(has_more_than_500_examples, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
-boxplot(f1~model, data=plot_data)
+plot_boxplot_by_model(plot_data, ">=500 Samples")
 
 
 
-# NEXT STEPS: AGRUPAR DATASETS POR TIPOS PARA AVERIGURAR QUE MODELO FUNCIONA MEJOR CON QUE TIPO DD DATASETS. 
 
 
 
