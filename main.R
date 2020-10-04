@@ -10,11 +10,11 @@ base_directory <- "~/Documents/TFM"
 datasets_dir <- "DATASETS"
 setwd(paste0(base_directory, "/", datasets_dir))
 
-#
-#
-#
-#
-
+# Function to parse the data contained in a metadata file. The metadata file is a file that contains a schema about the dataset 
+# that specifies: name of the dataset file, type of the data contained in each column (categorical or numerical), which column is 
+# the target and the format of the file (coma separated, tab separated, etc)
+# @return: dataframe with all the information from metadata file
+#          The input path is the relative paths to the working directory path, that should be set previously.
 parse_metadata <- function(metadata_file_path) {
   metadata_df <- data.frame(matrix(ncol=2, nrow = 0))
   colnames(metadata_df) <- c("key", "value")
@@ -61,6 +61,9 @@ locate_input_files <- function(){
   return(df_files)
 }
 
+# Function that saves the data from the dataset into a dataframe getting first the format of the dataset from the metadata_df.
+#
+# @return: dataframe which contains the raw data
 load_data <- function(metadata_df, data_file) {
   format <- metadata_df[which(metadata_df$key=='format'),'value']
   sep=""
@@ -85,6 +88,9 @@ load_data <- function(metadata_df, data_file) {
   return(raw_data)
 }
 
+# Function that reads the data type of every variable from the metadata_df and converts the read data into it.
+# 
+# @return: dataframe with the loaded data, with types that match those specified in the metadata file
 convert_data <- function(metadata_df, loaded_data, loaded_external_label_data = data.frame()) {
   columns_df <- metadata_df[which(grepl("column", metadata_df$key)),]
   preprocessed_df = loaded_data
@@ -110,13 +116,13 @@ convert_data <- function(metadata_df, loaded_data, loaded_external_label_data = 
       }
     }
   }
-  
+  ## Removes columns in the training set that a categorical variable with only one value.
   for (column in names(preprocessed_df)){
     if(is.factor(preprocessed_df[[column]])){
       if(length(levels(preprocessed_df[[column]]))==1){
         preprocessed_df <- preprocessed_df[,!(names(preprocessed_df) %in% column)]
       }else {
-        # Para hacer que los nombres del target coincidan con los ya entrenados
+        # To match the target names with the ones already trained
         if(all(make.names(levels(preprocessed_df[[column]])) == levels(preprocessed_df[[column]]))){
           levels <- levels(preprocessed_df[[column]])
         }else{
@@ -130,21 +136,29 @@ convert_data <- function(metadata_df, loaded_data, loaded_external_label_data = 
   return(preprocessed_df)
 }
 
+## This is finally implemented in line 122.
+## Removes columns in the training set that a categorical variable with only one value.
+# for (column in names(train_data)){
+#   if(is.factor(train_data[[column]])){
+#     if(length(levels(train_data[[column]]))==1){
+#       train_data <- train_data[,!(names(train_data) %in% column)]
+#     }
+#   }
+# }
 
-for (column in names(train_data)){
-  if(is.factor(train_data[[column]])){
-    if(length(levels(train_data[[column]]))==1){
-      train_data <- train_data[,!(names(train_data) %in% column)]
-    }
-  }
-}
 
 
+# Function to remove NAs (not available) values from the input dataframe
+#
+# @return: dataframe
 remove_NAs <- function(df){
   df <- df[complete.cases(df), ]
   return(df)
 }
 
+# Function that creates a train and a test datasets from a dataframe as input.
+#
+# @return: Two dataframes train and test
 extract_train_test_datasets <- function(df) {
   train_percentage <- 0.75
   train_size <- floor(train_percentage*nrow(df))
@@ -155,6 +169,9 @@ extract_train_test_datasets <- function(df) {
   return(list(train_data, test_data))
 }
 
+# Function that loads a selection of hyperparameters for each model to use in cross validation
+#
+# @return: a dataframe with two columns: name of the model and list of hyperparameters to try with
 load_model_properties <- function(train_data){
   model_properties <- data.frame(matrix(ncol=2, nrow = 0))
   colnames(model_properties) <- c('model','tgrid')
@@ -190,12 +207,15 @@ load_model_properties <- function(train_data){
 }
 
 
-
+# List with all the models to compare
 models <- list('rf', 'svmLinear', 'svmPoly', 'glm', 'rpart', 'ada','xgbLinear',  'nb', 'knn') #glm, rpart  
 #models <- list()
 
+#  Dataframe where to load the paths of the dataset files and metadata files
 input_file_df <- locate_input_files()
 
+# In this section the ETL processes are handled, datasets train and test are created and 
+# train and prediction of the datasets are taken care of.
 for (dataset_index in 1:dim(input_file_df)[1]){
   dataset_id <- input_file_df[dataset_index,1]
   print(dataset_id)
@@ -231,16 +251,21 @@ for (dataset_index in 1:dim(input_file_df)[1]){
   }
 }
 
-
+# Fixed names to give to the directories of scope
 actuals_dir <- "actuals"
 output_dir <- "output"
 
+# Change working directory for creating and saving the the output files
 setwd(paste0(base_directory, "/", output_dir))
 
+# df_result is a dataframe where to store all the results to evaluate.
+# It has two columns: mixed name with dataset name + name of model used, and ROC information
 df_results <- data.frame(matrix(ncol=3, nrow = 0))
 colnames(df_results) <- c("dataset_model", "model", "f1")
 files <- list.files(path = ".", recursive = TRUE)
 
+
+# Compares the prediction of each model to the actual labels, computing the F1 score for each model and dataset.
 for(file in files){
   print(file)
   dataset_id <- substr(file,1,str_locate(file, "[^_]+$")[1]-2)
@@ -312,7 +337,8 @@ for(file in files){
 
 
 
-# Agrupamos datasets
+# Grouping datasets into different sets: by number of samples, by number of variables, 
+# by percentage of categorical variables, by percentage of numerical variables
 base_directory <- "~/Documents/TFM"
 datasets_dir <- "DATASETS"
 setwd(paste0(base_directory, "/", datasets_dir))
@@ -343,11 +369,14 @@ for (dataset_index in 1:dim(input_file_df)[1]){
 
 theme <- theme_set(theme_minimal())
 
+# Set of functions to show results in different ways: by model, by data group, 
+# by model and datasetgroup
 plot_boxplot_by_model <- function(df, title){
     boxplot <- ggplot(df, aes(x=reorder(model, -f1, median), y=f1)) + 
     geom_boxplot(aes(fill=model)) +
     theme(axis.text.x= element_text(angle = 90), legend.position = 'none') +
-    ggtitle(title)
+    ggtitle(title) +
+    xlab("Model")
     return(boxplot)
 }
 
@@ -355,9 +384,11 @@ plot_boxplot_by_data_group <- function(df){
   boxplot <- ggplot(df, aes(x=reorder(data_group, -f1, median), y=f1)) + 
     geom_boxplot(aes(fill=data_group)) +
     theme(axis.text.x= element_text(angle = 90), legend.position = 'none') +
-    ggtitle(df$model[1])
+    ggtitle(df$model[1]) +
+    xlab("Dataset category group")
   return(boxplot)
 }
+
 group_results_by_model_and_dataset_group <- function(results_df, dataset_list, model, dataset_group_tag){
   pattern = paste(dataset_list, collapse="|")
   temp_df = results_df[grepl(pattern,results_df[,"dataset_model"]),]
@@ -397,67 +428,98 @@ for(model in models){
 
 ## Representation of results by model
 
-# Plot conjunto
+# Plotting together models against data groups
 ggplot(df_results_by_data_group, aes(x=reorder(data_group, -f1, median), y=f1)) + 
   geom_boxplot(aes(fill=data_group)) +
   theme(axis.text.x= element_text(angle = 90), legend.position = 'none') +
   facet_wrap( ~ model) +
   xlab("Dataset category group")
 
-# Plot individual
+# Plotting individually one model introduced by datagroup
 plot_data <- df_results_by_data_group[df_results_by_data_group[,"model"]=="ada",]
 plot_boxplot_by_data_group(plot_data)
 
+plot_data <- df_results_by_data_group[df_results_by_data_group[,"model"]=="glm",]
+plot_boxplot_by_data_group(plot_data)
+
+plot_data <- df_results_by_data_group[df_results_by_data_group[,"model"]=="knn",]
+plot_boxplot_by_data_group(plot_data)
+
+plot_data <- df_results_by_data_group[df_results_by_data_group[,"model"]=="nb",]
+plot_boxplot_by_data_group(plot_data)
+
+plot_data <- df_results_by_data_group[df_results_by_data_group[,"model"]=="rf",]
+plot_boxplot_by_data_group(plot_data)
+
+plot_data <- df_results_by_data_group[df_results_by_data_group[,"model"]=="rpart",]
+plot_boxplot_by_data_group(plot_data)
+
+plot_data <- df_results_by_data_group[df_results_by_data_group[,"model"]=="svmLinear",]
+plot_boxplot_by_data_group(plot_data)
+
+plot_data <- df_results_by_data_group[df_results_by_data_group[,"model"]=="svmPoly",]
+plot_boxplot_by_data_group(plot_data)
+
+plot_data <- df_results_by_data_group[df_results_by_data_group[,"model"]=="xgbLinear",]
+plot_boxplot_by_data_group(plot_data)
 
 ## Representation of results by dataset group
 
-# Plot conjunto
+# Plotting together datagroups against models
 ggplot(df_results_by_data_group, aes(x=reorder(model, -f1, median), y=f1)) + 
   geom_boxplot(aes(fill=model)) +
   theme(axis.text.x= element_text(angle = 90), legend.position = 'none') +
   facet_wrap( ~ data_group, scales = "free_x") +
   xlab("Model")
 
-# Plots individuales
-## Todo variables categoricas
+# Individuale plots
+## Having all categorical variables
 pattern = paste(has_all_categorical_variables, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
 plot_boxplot_by_model(plot_data, "All categorical")
 
-## Todo variables numericas
+## Having all numerical Todo variables numericas
 pattern = paste(has_all_numerical_variables, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
 plot_boxplot_by_model(plot_data, "All numerical")
 
-## Mix de variables categoricas y numericas
+## Having a combinations of categorical and numerical variables
 pattern = paste(has_some_numerical_variables, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
 plot_boxplot_by_model(plot_data, "Numerical & Categorical")
 
-## Por numero variables: menos de 10 columnas
+## By number of variables:less than 10 columns
 pattern = paste(has_less_than_ten_variables, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
 plot_boxplot_by_model(plot_data, "<10 Features")
 
-## Por numero variables: igual o mas de 10 columnas
+## By number of variables: equal or more than 10 columns
 pattern = paste(has_more_than_ten_variables, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
 plot_boxplot_by_model(plot_data, ">=10 Features")
 
-## Por numero de ejemplos: menos de 500
+## By number of samples: less than 500
 pattern = paste(has_less_than_500_examples, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
 plot_boxplot_by_model(plot_data, "<500 Samples")
 
-## Por numero de ejemplos: mas de 500
+## By number of samples: more than 500
 pattern = paste(has_more_than_500_examples, collapse="|")
 plot_data <- df_results[grepl(pattern,df_results[,"dataset_model"]),][,c("model","f1")]
 plot_boxplot_by_model(plot_data, ">=500 Samples")
 
 
+# Function to plot a bar chart to show the how many datasets belong to each category group
+ggplot(df_results_by_data_group[df_results_by_data_group[,"model"]=="xgbLinear",c("dataset_model", "data_group")], aes(x=data_group)) + 
+  geom_bar(stat='count') +
+  theme(axis.text.x= element_text(angle = 90), legend.position = 'none') +
+  #facet_wrap( ~ data_group, scales = "free_x") +
+  xlab("Dataset category group")
 
 
+dataset_subset = df_results_by_data_group[df_results_by_data_group[,'data_group']==">=500 Samples" & df_results_by_data_group[,'model']=="rf","dataset_model"]
 
+df_results_by_data_group[df_results_by_data_group[,'dataset_model'] %in% dataset_subset & df_results_by_data_group[,'model']=="rf",]
 
 #fit <- train(formula, data=train_data, method = "rf", tuneGrid = tgrid, trControl = fitControl, ntree=10, metric="Kappa", allowParallel=F)
 
